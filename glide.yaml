@@ -1,0 +1,7 @@
+package: github.com/mopsalarm/go-pr0gramm-analyze
+import:
+- package: github.com/Sirupsen/logrus
+  version: ~0.10.0
+- package: github.com/lib/pq
+- package: github.com/mopsalarm/go-pr0gramm
+  version: master
