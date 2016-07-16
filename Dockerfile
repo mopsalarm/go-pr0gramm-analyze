@@ -1,4 +1,4 @@
-FROM centurylink/ca-certs
+FROM vimagick/tesseract
 
 VOLUME /cache
 COPY go-pr0gramm-analyze /

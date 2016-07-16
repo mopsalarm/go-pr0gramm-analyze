@@ -156,6 +156,7 @@ func main() {
 	postgresAddress := flag.String("postgres", "host=localhost user=postgres password=password sslmode=disable",
 		"Postgres connection string")
 
+	flag.Parse()
 
 	// open database connection
 	db, err := sql.Open("postgres", *postgresAddress)
