@@ -28,7 +28,9 @@ type Result struct {
 	Okay bool
 }
 
-func ConsumeWithChannel(channel chan <- pr0gramm.Item) func(pr0gramm.Item) error {
+type none struct{}
+
+func ConsumeWithChannel(channel chan<- pr0gramm.Item) func(pr0gramm.Item) error {
 	return func(item pr0gramm.Item) error {
 		channel <- item
 		return nil
@@ -156,6 +158,8 @@ func main() {
 	postgresAddress := flag.String("postgres", "host=localhost user=postgres password=password sslmode=disable",
 		"Postgres connection string")
 
+	startAtId := flag.Uint64("start-at", 0, "Starts at this id if given.")
+
 	flag.Parse()
 
 	// open database connection
@@ -178,6 +182,10 @@ func main() {
 
 	request := pr0gramm.NewItemsRequest().WithFlags(pr0gramm.AllContentTypes)
 
+	if *startAtId > 0 {
+		request = request.WithOlderThan(pr0gramm.Id(*startAtId))
+	}
+
 	inputItems := make(chan pr0gramm.Item, 8)
 
 	go func() {
@@ -185,7 +193,8 @@ func main() {
 
 		// read some items into the input channel.
 		err := pr0gramm.Stream(request, pr0gramm.ConsumeIf(func(item pr0gramm.Item) bool {
-			return time.Since(item.Created.Time).Hours() < 31 * 24
+			hoursInYear := float64(12 * (24 * 31))
+			return time.Since(item.Created.Time).Hours() < 20 * hoursInYear
 		}, ConsumeWithChannel(inputItems)))
 
 		if err != nil {
