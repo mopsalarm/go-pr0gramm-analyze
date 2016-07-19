@@ -1,25 +1,28 @@
 package main
 
 import (
+	"flag"
 	"fmt"
-	"github.com/Sirupsen/logrus"
-	"github.com/mopsalarm/go-pr0gramm"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
-	"strings"
-	"time"
 	"os/exec"
 	"regexp"
+	"strings"
 	"sync"
-	"flag"
+	"time"
 
-	_ "github.com/lib/pq"
+	"github.com/Sirupsen/logrus"
+	"github.com/mopsalarm/go-pr0gramm"
+	"github.com/robfig/cron"
+
 	"database/sql"
+	"errors"
 	"log"
 	"path"
-	"errors"
+
+	_ "github.com/lib/pq"
 )
 
 type Result struct {
@@ -69,7 +72,7 @@ func DownloadItemWithCache(item pr0gramm.Item) (string, error) {
 	defer response.Body.Close()
 	defer io.Copy(ioutil.Discard, response.Body)
 
-	fp, err := os.OpenFile(filename, os.O_CREATE | os.O_WRONLY, 0644)
+	fp, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return "", err
 	}
@@ -146,7 +149,7 @@ func WriteItemHasText(db *sql.DB, item pr0gramm.Item, hasText bool) error {
 
 	defer tx.Commit()
 
-	_, err = tx.Exec("INSERT INTO items_text (item_id, has_text) VALUES ($1, $2) ON CONFLICT DO NOTHING", item.Id, hasText);
+	_, err = tx.Exec("INSERT INTO items_text (item_id, has_text) VALUES ($1, $2) ON CONFLICT DO NOTHING", item.Id, hasText)
 	if err != nil {
 		return err
 	}
@@ -154,11 +157,44 @@ func WriteItemHasText(db *sql.DB, item pr0gramm.Item, hasText bool) error {
 	return nil
 }
 
+func RunForRequest(db *sql.DB, request pr0gramm.ItemsRequest, itemMaxAge time.Duration) {
+	inputItems := make(chan pr0gramm.Item, 8)
+
+	go func() {
+		defer close(inputItems)
+
+		// read some items into the input channel.
+		err := pr0gramm.Stream(request, pr0gramm.ConsumeIf(func(item pr0gramm.Item) bool {
+			return time.Since(item.Created.Time) < itemMaxAge
+		}, ConsumeWithChannel(inputItems)))
+
+		if err != nil {
+			logrus.WithError(err).Warn("Could not read feed.")
+		}
+	}()
+
+	wg := sync.WaitGroup{}
+
+	// start processors
+	for idx := 0; idx < 6; idx++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for item := range inputItems {
+				ProcessItem(db, item)
+			}
+		}()
+	}
+
+	wg.Wait()
+}
+
 func main() {
 	postgresAddress := flag.String("postgres", "host=localhost user=postgres password=password sslmode=disable",
 		"Postgres connection string")
 
 	startAtId := flag.Uint64("start-at", 0, "Starts at this id if given.")
+	maxItemAge := flag.Int("max-item-age", 10, "Max item age in minutes. Only valid if start-at was not specified.")
 
 	flag.Parse()
 
@@ -184,36 +220,21 @@ func main() {
 
 	if *startAtId > 0 {
 		request = request.WithOlderThan(pr0gramm.Id(*startAtId))
+		day := time.Hour * 24
+		year := 356 * day
+
+		RunForRequest(db, request, 20*year)
+
+	} else {
+		cr := cron.New()
+		cr.AddFunc("@every 2m", func() {
+			logrus.Info("Checking for new items now.")
+			RunForRequest(db, request, time.Duration(*maxItemAge)*time.Minute)
+		})
+
+		cr.Start()
+
+		forever := make(chan none)
+		<-forever
 	}
-
-	inputItems := make(chan pr0gramm.Item, 8)
-
-	go func() {
-		defer close(inputItems)
-
-		// read some items into the input channel.
-		err := pr0gramm.Stream(request, pr0gramm.ConsumeIf(func(item pr0gramm.Item) bool {
-			hoursInYear := float64(12 * (24 * 31))
-			return time.Since(item.Created.Time).Hours() < 20 * hoursInYear
-		}, ConsumeWithChannel(inputItems)))
-
-		if err != nil {
-			logrus.WithError(err).Warn("Could not read feed.")
-		}
-	}()
-
-	wg := sync.WaitGroup{}
-
-	// start processors
-	for idx := 0; idx < 6; idx++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for item := range inputItems {
-				ProcessItem(db, item)
-			}
-		}()
-	}
-
-	wg.Wait()
 }

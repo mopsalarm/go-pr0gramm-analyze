@@ -5,3 +5,5 @@ import:
 - package: github.com/lib/pq
 - package: github.com/mopsalarm/go-pr0gramm
   version: master
+- package: github.com/robfig/cron
+  version: ~1.0.0
