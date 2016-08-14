@@ -22,6 +22,7 @@ import (
 
 	_ "github.com/lib/pq"
 	"github.com/jessevdk/go-flags"
+	"runtime"
 )
 
 type Result struct {
@@ -166,7 +167,7 @@ func WriteItemHasText(db *sql.DB, item pr0gramm.Item, hasText bool) error {
 	return nil
 }
 
-func RunForRequest(db *sql.DB, request pr0gramm.ItemsRequest, itemMaxAge time.Duration, cleanup bool) {
+func RunForRequest(db *sql.DB, request pr0gramm.ItemsRequest, itemMaxAge time.Duration, cleanup bool, workerCount int) {
 	inputItems := make(chan pr0gramm.Item, 8)
 
 	go func() {
@@ -184,8 +185,13 @@ func RunForRequest(db *sql.DB, request pr0gramm.ItemsRequest, itemMaxAge time.Du
 
 	wg := sync.WaitGroup{}
 
+	if workerCount < 1 {
+		// use default
+		workerCount = runtime.NumCPU()
+	}
+
 	// start processors
-	for idx := 0; idx < 6; idx++ {
+	for idx := 0; idx < workerCount; idx++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -204,6 +210,7 @@ func main() {
 		StartAt    uint64 `long:"start-at" description:"Starts the process at the given id. If you pass this, all ids below this id are read."`
 		MaxItemAge int `long:"max-item-age" default:"60" description:"Max item age in minutes to analyze. Only valid, if start-at was not specified."`
 		Cleanup    bool `long:"cleanup" description:"Delete images a short while after they were downloaded."`
+		Parallel   int `long:"parallel" default:"0" description:"Number of parallel jobs to execute. Defaults to the numbers of cpus."`
 	}
 
 	if _, err := flags.Parse(&args); err != nil {
@@ -235,13 +242,13 @@ func main() {
 		day := time.Hour * 24
 		year := 356 * day
 
-		RunForRequest(db, request, 20 * year, args.Cleanup)
+		RunForRequest(db, request, 20 * year, args.Cleanup, args.Parallel)
 
 	} else {
 		cr := cron.New()
 		cr.AddFunc("@every 2m", func() {
 			log.Info("Checking for new items now.")
-			RunForRequest(db, request, time.Duration(args.MaxItemAge) * time.Minute, args.Cleanup)
+			RunForRequest(db, request, time.Duration(args.MaxItemAge) * time.Minute, args.Cleanup, args.Parallel)
 		})
 
 		log.Info("Everything okay, starting job-scheduler now.")
