@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -13,16 +12,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Sirupsen/logrus"
+	log "github.com/Sirupsen/logrus"
 	"github.com/mopsalarm/go-pr0gramm"
 	"github.com/robfig/cron"
 
 	"database/sql"
 	"errors"
-	"log"
 	"path"
 
 	_ "github.com/lib/pq"
+	"github.com/jessevdk/go-flags"
 )
 
 type Result struct {
@@ -33,7 +32,7 @@ type Result struct {
 
 type none struct{}
 
-func ConsumeWithChannel(channel chan<- pr0gramm.Item) func(pr0gramm.Item) error {
+func ConsumeWithChannel(channel chan <- pr0gramm.Item) func(pr0gramm.Item) error {
 	return func(item pr0gramm.Item) error {
 		channel <- item
 		return nil
@@ -44,8 +43,8 @@ func ItemUrl(item pr0gramm.Item) string {
 	return fmt.Sprintf("http://pr0gramm.com/new/%d", item.Id)
 }
 
-func ItemLogger(item pr0gramm.Item) logrus.FieldLogger {
-	return logrus.WithField("item", ItemUrl(item))
+func ItemLogger(item pr0gramm.Item) log.FieldLogger {
+	return log.WithField("item", ItemUrl(item))
 }
 
 func DownloadItemWithCache(item pr0gramm.Item) (string, error) {
@@ -72,7 +71,7 @@ func DownloadItemWithCache(item pr0gramm.Item) (string, error) {
 	defer response.Body.Close()
 	defer io.Copy(ioutil.Discard, response.Body)
 
-	fp, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0644)
+	fp, err := os.OpenFile(filename, os.O_CREATE | os.O_WRONLY, 0644)
 	if err != nil {
 		return "", err
 	}
@@ -88,7 +87,7 @@ func DownloadItemWithCache(item pr0gramm.Item) (string, error) {
 	return filename, nil
 }
 
-func ProcessItem(db *sql.DB, item pr0gramm.Item) {
+func ProcessItem(db *sql.DB, item pr0gramm.Item, cleanup bool) {
 	if !strings.HasSuffix(item.Image, ".jpg") && !strings.HasSuffix(item.Image, ".png") {
 		return
 	}
@@ -103,6 +102,16 @@ func ProcessItem(db *sql.DB, item pr0gramm.Item) {
 	if err != nil {
 		ItemLogger(item).WithError(err).Warn("Could not download item")
 		return
+	}
+
+	if cleanup {
+		// schedule a cleanup job
+		go func() {
+			time.Sleep(15 * time.Minute)
+			if err := os.Remove(filename); err != nil {
+				log.WithField("file", filename).WithError(err).Warn("Could not cleanup")
+			}
+		}()
 	}
 
 	hasText, err := ImageContainsText(filename)
@@ -157,7 +166,7 @@ func WriteItemHasText(db *sql.DB, item pr0gramm.Item, hasText bool) error {
 	return nil
 }
 
-func RunForRequest(db *sql.DB, request pr0gramm.ItemsRequest, itemMaxAge time.Duration) {
+func RunForRequest(db *sql.DB, request pr0gramm.ItemsRequest, itemMaxAge time.Duration, cleanup bool) {
 	inputItems := make(chan pr0gramm.Item, 8)
 
 	go func() {
@@ -169,7 +178,7 @@ func RunForRequest(db *sql.DB, request pr0gramm.ItemsRequest, itemMaxAge time.Du
 		}, ConsumeWithChannel(inputItems)))
 
 		if err != nil {
-			logrus.WithError(err).Warn("Could not read feed.")
+			log.WithError(err).Warn("Could not read feed.")
 		}
 	}()
 
@@ -181,7 +190,7 @@ func RunForRequest(db *sql.DB, request pr0gramm.ItemsRequest, itemMaxAge time.Du
 		go func() {
 			defer wg.Done()
 			for item := range inputItems {
-				ProcessItem(db, item)
+				ProcessItem(db, item, cleanup)
 			}
 		}()
 	}
@@ -190,48 +199,52 @@ func RunForRequest(db *sql.DB, request pr0gramm.ItemsRequest, itemMaxAge time.Du
 }
 
 func main() {
-	postgresAddress := flag.String("postgres", "host=localhost user=postgres password=password sslmode=disable",
-		"Postgres connection string")
+	var args struct {
+		Postgres   string `long:"postgres" default:"host=localhost user=postgres password=password sslmode=disable" description:"Address of the postgres database to connect to. Should be a dsn string or connection url."`
+		StartAt    uint64 `long:"start-at" description:"Starts the process at the given id. If you pass this, all ids below this id are read."`
+		MaxItemAge int `long:"max-item-age" default:"60" description:"Max item age in minutes to analyze. Only valid, if start-at was not specified."`
+		Cleanup    bool `long:"cleanup" description:"Delete images a short while after they were downloaded."`
+	}
 
-	startAtId := flag.Uint64("start-at", 0, "Starts at this id if given.")
-	maxItemAge := flag.Int("max-item-age", 10, "Max item age in minutes. Only valid if start-at was not specified.")
-
-	flag.Parse()
+	if _, err := flags.Parse(&args); err != nil {
+		os.Exit(1)
+	}
 
 	// open database connection
-	db, err := sql.Open("postgres", *postgresAddress)
+	db, err := sql.Open("postgres", args.Postgres)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// cleanup on close and set default flags.
 	defer db.Close()
-	db.SetMaxOpenConns(2)
+	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 	db.SetConnMaxLifetime(1 * time.Minute)
 
 	// check if connect is valid and available
 	if err = db.Ping(); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 		return
 	}
 
 	request := pr0gramm.NewItemsRequest().WithFlags(pr0gramm.AllContentTypes)
 
-	if *startAtId > 0 {
-		request = request.WithOlderThan(pr0gramm.Id(*startAtId))
+	if args.StartAt > 0 {
+		request = request.WithOlderThan(pr0gramm.Id(args.StartAt))
 		day := time.Hour * 24
 		year := 356 * day
 
-		RunForRequest(db, request, 20*year)
+		RunForRequest(db, request, 20 * year, args.Cleanup)
 
 	} else {
 		cr := cron.New()
 		cr.AddFunc("@every 2m", func() {
-			logrus.Info("Checking for new items now.")
-			RunForRequest(db, request, time.Duration(*maxItemAge)*time.Minute)
+			log.Info("Checking for new items now.")
+			RunForRequest(db, request, time.Duration(args.MaxItemAge) * time.Minute, args.Cleanup)
 		})
 
+		log.Info("Everything okay, starting job-scheduler now.")
 		cr.Start()
 
 		forever := make(chan none)

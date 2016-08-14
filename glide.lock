@@ -1,12 +1,14 @@
-hash: 98e48020fbbd367b74ff33c7e390e763870f9ea97ac6b34e3f0d3c91d720b299
-updated: 2016-07-19T19:35:53.183222+02:00
+hash: ddbcb504d3ad3e67659a9b0125d880748ba637f86e4ea45ea97591c15b1ad806
+updated: 2016-08-14T18:39:59.077579832+02:00
 imports:
+- name: github.com/jessevdk/go-flags
+  version: 37c8226983775d404b6edfebd44be1078bd0fe95
 - name: github.com/lib/pq
   version: 4dd446efc17690bc53e154025146f73203b18309
   subpackages:
   - oid
 - name: github.com/mopsalarm/go-pr0gramm
-  version: 851a52045e855c424a67afdfa59293f69634bb95
+  version: 84fe99f4eadaf920ac8d4c150c1dcdcf1e6b4d49
 - name: github.com/robfig/cron
   version: b024fc5ea0e34bc3f83d9941c8d60b0622bfaca4
 - name: github.com/Sirupsen/logrus

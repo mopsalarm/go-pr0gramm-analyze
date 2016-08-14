@@ -7,3 +7,5 @@ import:
   version: master
 - package: github.com/robfig/cron
   version: ~1.0.0
+- package: github.com/jessevdk/go-flags
+  version: ~1.0.0
