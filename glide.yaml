@@ -3,8 +3,9 @@ import:
 - package: github.com/Sirupsen/logrus
   version: ~0.10.0
 - package: github.com/lib/pq
-- package: github.com/mopsalarm/go-pr0gramm
   version: master
+- package: github.com/mopsalarm/go-pr0gramm
+  version: ~1.0.0
 - package: github.com/robfig/cron
   version: ~1.0.0
 - package: github.com/jessevdk/go-flags

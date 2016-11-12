@@ -20,8 +20,8 @@ import (
 	"errors"
 	"path"
 
-	_ "github.com/lib/pq"
 	"github.com/jessevdk/go-flags"
+	_ "github.com/lib/pq"
 	"runtime"
 )
 
@@ -33,7 +33,7 @@ type Result struct {
 
 type none struct{}
 
-func ConsumeWithChannel(channel chan <- pr0gramm.Item) func(pr0gramm.Item) error {
+func ConsumeWithChannel(channel chan<- pr0gramm.Item) func(pr0gramm.Item) error {
 	return func(item pr0gramm.Item) error {
 		channel <- item
 		return nil
@@ -72,7 +72,7 @@ func DownloadItemWithCache(item pr0gramm.Item) (string, error) {
 	defer response.Body.Close()
 	defer io.Copy(ioutil.Discard, response.Body)
 
-	fp, err := os.OpenFile(filename, os.O_CREATE | os.O_WRONLY, 0644)
+	fp, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return "", err
 	}
@@ -208,9 +208,9 @@ func main() {
 	var args struct {
 		Postgres   string `long:"postgres" default:"host=localhost user=postgres password=password sslmode=disable" description:"Address of the postgres database to connect to. Should be a dsn string or connection url."`
 		StartAt    uint64 `long:"start-at" description:"Starts the process at the given id. If you pass this, all ids below this id are read."`
-		MaxItemAge int `long:"max-item-age" default:"60" description:"Max item age in minutes to analyze. Only valid, if start-at was not specified."`
-		Cleanup    bool `long:"cleanup" description:"Delete images a short while after they were downloaded."`
-		Parallel   int `long:"parallel" default:"0" description:"Number of parallel jobs to execute. Defaults to the numbers of cpus."`
+		MaxItemAge int    `long:"max-item-age" default:"60" description:"Max item age in minutes to analyze. Only valid, if start-at was not specified."`
+		Cleanup    bool   `long:"cleanup" description:"Delete images a short while after they were downloaded."`
+		Parallel   int    `long:"parallel" default:"0" description:"Number of parallel jobs to execute. Defaults to the numbers of cpus."`
 	}
 
 	if _, err := flags.Parse(&args); err != nil {
@@ -242,13 +242,13 @@ func main() {
 		day := time.Hour * 24
 		year := 356 * day
 
-		RunForRequest(db, request, 20 * year, args.Cleanup, args.Parallel)
+		RunForRequest(db, request, 20*year, args.Cleanup, args.Parallel)
 
 	} else {
 		cr := cron.New()
 		cr.AddFunc("@every 2m", func() {
 			log.Info("Checking for new items now.")
-			RunForRequest(db, request, time.Duration(args.MaxItemAge) * time.Minute, args.Cleanup, args.Parallel)
+			RunForRequest(db, request, time.Duration(args.MaxItemAge)*time.Minute, args.Cleanup, args.Parallel)
 		})
 
 		log.Info("Everything okay, starting job-scheduler now.")
