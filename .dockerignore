@@ -1,1 +1,5 @@
-/cache
+.idea
+.git
+go-pr0gramm-analyze
+cache
+Dockerfile

@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/mopsalarm/go-pr0gramm"
 	"github.com/robfig/cron"
+	log "github.com/sirupsen/logrus"
 
 	"database/sql"
 	"errors"
@@ -41,7 +41,7 @@ func ConsumeWithChannel(channel chan<- pr0gramm.Item) func(pr0gramm.Item) error 
 }
 
 func ItemUrl(item pr0gramm.Item) string {
-	return fmt.Sprintf("http://pr0gramm.com/new/%d", item.Id)
+	return fmt.Sprintf("https://pr0gramm.com/new/%d", item.Id)
 }
 
 func ItemLogger(item pr0gramm.Item) log.FieldLogger {
@@ -62,7 +62,7 @@ func DownloadItemWithCache(item pr0gramm.Item) (string, error) {
 		return "", fmt.Errorf("Could not create directory, error: %s", err)
 	}
 
-	uri := "http://img.pr0gramm.com/" + item.Image
+	uri := "https://img.pr0gramm.com/" + item.Image
 	response, err := http.DefaultClient.Get(uri)
 	if err != nil {
 		return "", err
