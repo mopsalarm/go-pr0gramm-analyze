@@ -1,10 +1,10 @@
-FROM golang:1.11-stretch as builder
+FROM golang:1.11.5-stretch as builder
 
 ENV GO111MODULE=on
 ENV PACKAGE github.com/mopsalarm/pr0gramm-analyze
 WORKDIR $GOPATH/src/$PACKAGE/
 
-COPY go.mod go.sum ./
+COPY go.mod ./
 RUN go mod download
 
 ENV CGO_ENABLED=0
