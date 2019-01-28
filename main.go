@@ -84,7 +84,7 @@ func ProcessItem(session *pr0gramm.Session, item pr0gramm.Item) error {
 	}
 
 	if hasText {
-		tags = append(tags, "hat text")
+		tags = append(tags, "text")
 	}
 
 	correctGray, err := ImageContainsCorrectGray(filename)
